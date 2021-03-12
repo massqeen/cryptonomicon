@@ -1,23 +1,63 @@
-.DS_Store
-node_modules
-/dist
+# IntellijIdea files
+# User-specific stuff:
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+.idea/vcs.xml
+.idea/jsLibraryMappings.xml
 
+# Sensitive or high-churn files:
+.idea/dataSources.ids
+.idea/dataSources.xml
+.idea/dataSources.local.xml
+.idea/sqlDataSources.xml
+.idea/dynamic.xml
+.idea/uiDesigner.xml
 
-# local env files
+# Gradle:
+.idea/gradle.xml
+.idea/libraries
+
+# dependencies
+/node_modules
+
+# Jest
+/jest
+
+# misc
+.env
 .env.local
-.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Log files
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
 
-# Editor directories and files
-.idea
-.vscode
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+.DS_Store
+.lock
+
+#prod
+public/static/upload/*
+!/public/static/upload/file.txt
+# keys
+# server/config/keys.js
+
+#dist
+/dist
+dump.rdb
+
+# /pm2
+.next
+
+audits
+server/cookieStore
+
+pm2/logs
+yarn.lock
+
+build/
+dist/
+node_modules/
+.secret-*
