@@ -49,7 +49,10 @@
           <div
             v-for="t in tickers"
             :key="t.name"
-            @click="sel = t"
+            @click="select(t)"
+            :class="{
+              'border-4': sel === t,
+            }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
             <div class="px-4 py-5 sm:p-6 text-center">
@@ -62,7 +65,7 @@
             </div>
             <div class="w-full border-t border-gray-200"></div>
             <button
-              @click="handleDelete(t)"
+              @click.stop="handleDelete(t)"
               class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none"
             >
               <svg
@@ -70,7 +73,6 @@
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 20 20"
                 fill="#718096"
-                aria-hidden="true"
               >
                 <path
                   fill-rule="evenodd"
@@ -83,15 +85,17 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      <section class="relative">
+      <section v-if="sel" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          VUE - USD
+          {{ sel.name }} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
-          <div class="bg-purple-800 border w-10 h-24"></div>
-          <div class="bg-purple-800 border w-10 h-32"></div>
-          <div class="bg-purple-800 border w-10 h-48"></div>
-          <div class="bg-purple-800 border w-10 h-16"></div>
+          <div
+            v-for="(bar, i) in normalizeGraph()"
+            :key="i"
+            :style="{ height: `${bar}%` }"
+            class="bg-purple-800 border w-10"
+          ></div>
         </div>
         <button
           @click="sel = null"
@@ -100,15 +104,11 @@
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            xmlns:xlink="http://www.w3.org/1999/xlink"
-            xmlns:svgjs="http://svgjs.com/svgjs"
-            version="1.1"
             width="30"
             height="30"
             x="0"
             y="0"
             viewBox="0 0 511.76 511.76"
-            style="enable-background:new 0 0 512 512"
             xml:space="preserve"
           >
             <g>
@@ -131,28 +131,69 @@ export default {
 
   data() {
     return {
-      ticker: 'default',
-      tickers: [
-        { name: 'DEMO1', price: '-' },
-        { name: 'DEMO2', price: '2' },
-        { name: 'DEMO3', price: '-' },
-      ],
+      ticker: '',
+      tickers: [],
+      sel: null,
+      graph: [],
+      intervals: [],
     }
   },
 
   methods: {
     add() {
-      const newTicker = {
+      const currentTicker = {
         name: this.ticker,
         price: '-',
       }
 
-      this.tickers.push(newTicker)
+      this.tickers.push(currentTicker)
+      const intervalId = setInterval(async () => {
+        const f = await fetch(
+          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=fa0953473e497fca8bac965e71108df64934eeb22e2f15162856447d7faa3f4b`
+        )
+        const data = await f.json()
+        const foundedTicker = this.tickers.find(
+          t => t.name === currentTicker.name
+        )
+
+        if (!foundedTicker) {
+          return
+        }
+        foundedTicker.price =
+          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2)
+        // currentTicker.price = data.USD
+
+        if (this.sel?.name === currentTicker.name) {
+          this.graph.push(data.USD)
+        }
+      }, 5000)
+      this.intervals.push({ name: currentTicker.name, intervalId })
+
       this.ticker = ''
     },
 
+    select(ticker) {
+      this.sel = ticker
+      this.graph = []
+    },
+
     handleDelete(tickerToRemove) {
+      if (tickerToRemove === this.sel) {
+        this.sel = null
+      }
+      const intervalId = this.intervals.find(
+        t => t.name === tickerToRemove.name
+      )?.intervalId
+      clearInterval(intervalId)
       this.tickers = this.tickers.filter(t => t !== tickerToRemove)
+    },
+
+    normalizeGraph() {
+      const maxValue = Math.max(...this.graph)
+      const minValue = Math.min(...this.graph)
+      return this.graph.map(
+        price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      )
     },
   },
 }
