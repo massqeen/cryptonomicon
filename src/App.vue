@@ -1,7 +1,32 @@
 <template>
   <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
+    <div
+      v-if="isLoading"
+      class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center"
+    >
+      <svg
+        class="animate-spin -ml-1 mr-3 h-12 w-12 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        ></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
+      </svg>
+    </div>
+
     <div class="container">
-      <div class="w-full my-4"></div>
       <section>
         <div class="flex">
           <div class="max-w-xs">
@@ -12,12 +37,50 @@
               <input
                 v-model="ticker"
                 @keydown.enter="add"
+                @input="handleInputChange"
                 type="text"
                 name="wallet"
                 id="wallet"
                 class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
                 placeholder="Например DOGE"
+                minlength="2"
               />
+            </div>
+            <div
+              v-if="autoCompleteTags.length > 0"
+              class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
+            >
+              <span
+                v-show="autoCompleteTags[0]"
+                @click="handleTagClick(autoCompleteTags[0]?.Symbol)"
+                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+              >
+                {{ autoCompleteTags[0]?.Symbol }}
+              </span>
+              <span
+                v-show="autoCompleteTags[1]"
+                @click="handleTagClick(autoCompleteTags[1]?.Symbol)"
+                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+              >
+                {{ autoCompleteTags[1]?.Symbol }}
+              </span>
+              <span
+                v-show="autoCompleteTags[2]"
+                @click="handleTagClick(autoCompleteTags[2]?.Symbol)"
+                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+              >
+                {{ autoCompleteTags[2]?.Symbol }}
+              </span>
+              <span
+                v-show="autoCompleteTags[3]"
+                @click="handleTagClick(autoCompleteTags[3]?.Symbol)"
+                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+              >
+                {{ autoCompleteTags[3]?.Symbol }}
+              </span>
+            </div>
+            <div v-if="isDuplicated" class="text-sm text-red-600">
+              Такой тикер уже добавлен
             </div>
           </div>
         </div>
@@ -26,7 +89,6 @@
           type="button"
           class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
         >
-          <!-- Heroicon name: solid/mail -->
           <svg
             class="-ml-0.5 mr-2 h-6 w-6"
             xmlns="http://www.w3.org/2000/svg"
@@ -136,22 +198,56 @@ export default {
       sel: null,
       graph: [],
       intervals: [],
+      autoCompleteTags: [],
+      isDuplicated: false,
+      isLoading: false,
     }
   },
 
+  async created() {
+    const res = await this.getCoins()
+    this.coinList = Object.values(res)
+  },
+
   methods: {
+    async getCoins() {
+      try {
+        const coins = await fetch(
+          'https://min-api.cryptocompare.com/data/all/coinlist?summary=true'
+        )
+        const { Data } = await coins.json()
+        return Data
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.log(e)
+      }
+    },
+
+    async getTickerPrice(currentTicker) {
+      try {
+        const ticker = await fetch(
+          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=fa0953473e497fca8bac965e71108df64934eeb22e2f15162856447d7faa3f4b`
+        )
+        const { USD } = await ticker.json()
+        return USD
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.log(e)
+      }
+    },
+
     add() {
+      if (this.isDuplicated || this.ticker.length <= 2) {
+        return
+      }
+
       const currentTicker = {
-        name: this.ticker,
+        name: this.ticker.toUpperCase(),
         price: '-',
       }
 
       this.tickers.push(currentTicker)
       const intervalId = setInterval(async () => {
-        const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=fa0953473e497fca8bac965e71108df64934eeb22e2f15162856447d7faa3f4b`
-        )
-        const data = await f.json()
         const foundedTicker = this.tickers.find(
           t => t.name === currentTicker.name
         )
@@ -159,17 +255,65 @@ export default {
         if (!foundedTicker) {
           return
         }
+
+        const price = (await this.getTickerPrice(currentTicker)) || 0
+
         foundedTicker.price =
-          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2)
-        // currentTicker.price = data.USD
+          (await price) > 1
+            ? await price.toFixed(2)
+            : await price.toPrecision(2)
 
         if (this.sel?.name === currentTicker.name) {
-          this.graph.push(data.USD)
+          this.graph.push(price)
         }
       }, 5000)
       this.intervals.push({ name: currentTicker.name, intervalId })
 
       this.ticker = ''
+      this.autoCompleteTags = []
+    },
+
+    handleInputChange() {
+      this.checkIsDuplicated()
+      this.setAutocomplete()
+    },
+
+    handleTagClick(value) {
+      this.ticker = value
+      this.add(value)
+    },
+
+    checkIsDuplicated() {
+      this.isDuplicated = !!this.tickers.find(
+        ticker => ticker.name.toLowerCase() === this.ticker.toLowerCase()
+      )
+    },
+
+    setAutocomplete() {
+      if (this.ticker === '') {
+        this.autoCompleteTags = []
+        return
+      }
+
+      const foundedTags = this.coinList.filter(item =>
+        item?.Symbol.toLowerCase().includes(this.ticker.toLowerCase())
+      )
+
+      const identical = foundedTags.find(
+        item => item?.Symbol.toLowerCase() === this.ticker.toLowerCase()
+      )
+
+      if (identical) {
+        const foundedRestTags = foundedTags.filter(
+          item => item.Symbol.toLowerCase() !== identical.Symbol.toLowerCase()
+        )
+        this.autoCompleteTags =
+          foundedTags.length === 1
+            ? [identical]
+            : [identical, ...foundedRestTags]
+      } else {
+        this.autoCompleteTags = [...foundedTags]
+      }
     },
 
     select(ticker) {
