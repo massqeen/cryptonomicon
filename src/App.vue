@@ -107,9 +107,29 @@
 
       <template v-if="tickers.length">
         <hr class="w-full border-t border-gray-600 my-4" />
+        <div>
+          <button
+            v-if="page > 1"
+            @click="page -= 1"
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Назад
+          </button>
+          <button
+            v-if="hasNextPage"
+            @click="page += 1"
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Вперед
+          </button>
+          <label>
+            Фильтр:
+            <input type="text" v-model="filter" />
+          </label>
+        </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="t in tickers"
+            v-for="t in filterTickers()"
             :key="t.name"
             @click="select(t)"
             :class="{
@@ -201,10 +221,24 @@ export default {
       autoCompleteTags: [],
       isDuplicated: false,
       isLoading: false,
+      page: 1,
+      hasNextPage: true,
+      filter: '',
+      perPage: 6,
     }
   },
 
   async created() {
+    const windowData = Object.fromEntries(
+      new URL(window.location.toString()).searchParams.entries()
+    )
+    if (windowData?.filter) {
+      this.filter = windowData.filter
+    }
+    if (windowData?.page) {
+      this.page = windowData.page
+    }
+
     const tickersData = localStorage.getItem('cryptonomicon-list')
     if (tickersData) {
       try {
@@ -254,6 +288,18 @@ export default {
       localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers))
     },
 
+    filterTickers() {
+      const start = this.perPage * (this.page - 1)
+      const end = this.perPage * this.page
+      const filteredTickers = this.tickers.filter(ticker =>
+        ticker.name.toLowerCase().includes(this.filter.toLowerCase())
+      )
+
+      this.hasNextPage = filteredTickers.length > end
+
+      return filteredTickers.slice(start, end)
+    },
+
     subscribeToUpdates(tickerName) {
       const intervalId = setInterval(async () => {
         const foundedTicker = this.tickers.find(t => t.name === tickerName)
@@ -294,6 +340,7 @@ export default {
       this.saveTickers()
 
       this.ticker = ''
+      this.filter = ''
       this.autoCompleteTags = []
     },
 
@@ -362,6 +409,24 @@ export default {
       const minValue = Math.min(...this.graph)
       return this.graph.map(
         price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      )
+    },
+  },
+
+  watch: {
+    filter() {
+      this.page = 1
+      history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      )
+    },
+    page() {
+      history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
       )
     },
   },
