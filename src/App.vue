@@ -124,16 +124,16 @@
           </button>
           <label>
             Фильтр:
-            <input type="text" v-model="filter" />
+            <input type="text" v-model="filter" @input="page = 1" />
           </label>
         </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="t in filterTickers()"
+            v-for="t in paginatedTickers"
             :key="t.name"
             @click="select(t)"
             :class="{
-              'border-4': sel === t,
+              'border-4': selectedTicker === t,
             }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
@@ -167,20 +167,20 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      <section v-if="sel" class="relative">
+      <section v-if="selectedTicker" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          {{ sel.name }} - USD
+          {{ selectedTicker.name }} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-            v-for="(bar, i) in normalizeGraph()"
+            v-for="(bar, i) in normalizedGraph"
             :key="i"
             :style="{ height: `${bar}%` }"
             class="bg-purple-800 border w-10"
           ></div>
         </div>
         <button
-          @click="sel = null"
+          @click="selectedTicker = null"
           type="button"
           class="absolute top-0 right-0"
         >
@@ -208,23 +208,36 @@
 </template>
 
 <script>
+// [x] 6. Наличие в состоянии ЗАВИСИМЫХ ДАННЫХ | Критичность: 5+
+// [ ] 4. Запросы напрямую внутри компонента (???) | Критичность: 5
+// [ ] 2. При удалении остается подписка на загрузку тикера | Критичность: 5
+// [ ] 5. Обработка ошибок API | Критичность: 5
+// [ ] 3. Количество запросов | Критичность: 4
+// [x] 8. При удалении тикера не изменяется localStorage | Критичность: 4
+// [x] 1. Одинаковый код в watch | Критичность: 3
+// [ ] 9. localStorage и анонимные вкладки | Критичность: 3
+// [ ] 7. График ужасно выглядит если будет много цен | Критичность: 2
+// [ ] 10. Магические строки и числа (URL, 5000 миллисекунд задержки, ключ локал стореджа, количество на странице) |  Критичность: 1
+
+// Параллельно
+// [x] График сломан если везде одинаковые значения
+// [x] При удалении тикера остается выбор
+
 export default {
   name: 'App',
 
   data() {
     return {
       ticker: '',
-      tickers: [],
-      sel: null,
-      graph: [],
-      intervals: [],
-      autoCompleteTags: [],
-      isDuplicated: false,
-      isLoading: false,
-      page: 1,
-      hasNextPage: true,
       filter: '',
+      selectedTicker: null,
+      tickers: [],
+      graph: [],
+      page: 1,
       perPage: 6,
+      intervals: [], //
+      autoCompleteTags: [], //
+      isLoading: false, //
     }
   },
 
@@ -232,12 +245,12 @@ export default {
     const windowData = Object.fromEntries(
       new URL(window.location.toString()).searchParams.entries()
     )
-    if (windowData?.filter) {
-      this.filter = windowData.filter
-    }
-    if (windowData?.page) {
-      this.page = windowData.page
-    }
+    const VALID_KEYS = ['filter', 'page']
+    VALID_KEYS.forEach(key => {
+      if (windowData[key]) {
+        this[key] = windowData[key]
+      }
+    })
 
     const tickersData = localStorage.getItem('cryptonomicon-list')
     if (tickersData) {
@@ -253,9 +266,73 @@ export default {
     this.coinList = Object.values(res)
   },
 
-  // beforeUnmount() {
-  //   localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers))
-  // },
+  computed: {
+    startIndex() {
+      return this.perPage * (this.page - 1)
+    },
+
+    endIndex() {
+      return this.perPage * this.page
+    },
+
+    filteredTickers() {
+      return this.tickers.filter(ticker =>
+        ticker.name.toLowerCase().includes(this.filter.toLowerCase())
+      )
+    },
+
+    paginatedTickers() {
+      return this.filteredTickers.slice(this.startIndex, this.endIndex)
+    },
+
+    hasNextPage() {
+      return this.filteredTickers.length > this.endIndex
+    },
+
+    isDuplicated() {
+      return !!this.tickers.find(
+        ticker => ticker.name.toLowerCase() === this.ticker.toLowerCase()
+      )
+    },
+
+    foundedTags() {
+      return this.coinList.filter(item =>
+        item?.Symbol.toLowerCase().includes(this.ticker.toLowerCase())
+      )
+    },
+
+    identicalTag() {
+      return this.foundedTags.find(
+        item => item?.Symbol.toLowerCase() === this.ticker.toLowerCase()
+      )
+    },
+
+    foundedRestTags() {
+      return this.foundedTags.filter(
+        item =>
+          item.Symbol.toLowerCase() !== this.identicalTag.Symbol.toLowerCase()
+      )
+    },
+
+    normalizedGraph() {
+      const maxValue = Math.max(...this.graph)
+      const minValue = Math.min(...this.graph)
+      if (maxValue === minValue) {
+        return this.graph.map(() => 50)
+      }
+
+      return this.graph.map(
+        price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      )
+    },
+
+    pageStateOptions() {
+      return {
+        filter: this.filter,
+        page: this.page,
+      }
+    },
+  },
 
   methods: {
     async getCoins() {
@@ -288,18 +365,6 @@ export default {
       localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers))
     },
 
-    filterTickers() {
-      const start = this.perPage * (this.page - 1)
-      const end = this.perPage * this.page
-      const filteredTickers = this.tickers.filter(ticker =>
-        ticker.name.toLowerCase().includes(this.filter.toLowerCase())
-      )
-
-      this.hasNextPage = filteredTickers.length > end
-
-      return filteredTickers.slice(start, end)
-    },
-
     subscribeToUpdates(tickerName) {
       const intervalId = setInterval(async () => {
         const foundedTicker = this.tickers.find(t => t.name === tickerName)
@@ -315,7 +380,7 @@ export default {
             ? await price.toFixed(2)
             : await price.toPrecision(2)
 
-        if (this.sel?.name === tickerName) {
+        if (this.selectedTicker?.name === tickerName) {
           this.graph.push(price)
         }
       }, 5000)
@@ -324,7 +389,7 @@ export default {
     },
 
     add() {
-      if (this.isDuplicated || this.ticker.length <= 2) {
+      if (this.isDuplicated || this.ticker.length < 2) {
         return
       }
 
@@ -333,19 +398,28 @@ export default {
         price: '-',
       }
 
-      this.tickers.push(currentTicker)
+      this.tickers = [...this.tickers, currentTicker]
 
       this.subscribeToUpdates(currentTicker.name)
 
-      this.saveTickers()
+      this.resetTickerInput()
+      this.resetFilterInput()
+      this.resetAutocompleteTags()
+    },
 
+    resetTickerInput() {
       this.ticker = ''
+    },
+
+    resetFilterInput() {
       this.filter = ''
+    },
+
+    resetAutocompleteTags() {
       this.autoCompleteTags = []
     },
 
     handleInputChange() {
-      this.checkIsDuplicated()
       this.setAutocomplete()
     },
 
@@ -354,79 +428,62 @@ export default {
       this.add(value)
     },
 
-    checkIsDuplicated() {
-      this.isDuplicated = !!this.tickers.find(
-        ticker => ticker.name.toLowerCase() === this.ticker.toLowerCase()
-      )
-    },
-
     setAutocomplete() {
       if (this.ticker === '') {
-        this.autoCompleteTags = []
+        this.resetAutocompleteTags()
         return
       }
 
-      const foundedTags = this.coinList.filter(item =>
-        item?.Symbol.toLowerCase().includes(this.ticker.toLowerCase())
-      )
-
-      const identical = foundedTags.find(
-        item => item?.Symbol.toLowerCase() === this.ticker.toLowerCase()
-      )
-
-      if (identical) {
-        const foundedRestTags = foundedTags.filter(
-          item => item.Symbol.toLowerCase() !== identical.Symbol.toLowerCase()
-        )
+      if (this.identicalTag) {
         this.autoCompleteTags =
-          foundedTags.length === 1
-            ? [identical]
-            : [identical, ...foundedRestTags]
+          this.foundedTags.length === 1
+            ? [this.identicalTag]
+            : [this.identicalTag, ...this.foundedRestTags]
       } else {
-        this.autoCompleteTags = [...foundedTags]
+        this.autoCompleteTags = [...this.foundedTags]
       }
     },
 
     select(ticker) {
-      this.sel = ticker
-      this.graph = []
+      this.selectedTicker = ticker
     },
 
     handleDelete(tickerToRemove) {
-      if (tickerToRemove === this.sel) {
-        this.sel = null
+      if (tickerToRemove === this.selectedTicker) {
+        this.selectedTicker = null
       }
       const intervalId = this.intervals.find(
         t => t.name === tickerToRemove.name
       )?.intervalId
       clearInterval(intervalId)
       this.tickers = this.tickers.filter(t => t !== tickerToRemove)
-      this.saveTickers()
-    },
-
-    normalizeGraph() {
-      const maxValue = Math.max(...this.graph)
-      const minValue = Math.min(...this.graph)
-      return this.graph.map(
-        price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
-      )
     },
   },
 
   watch: {
+    selectedTicker() {
+      this.graph = []
+    },
+
+    tickers() {
+      this.saveTickers()
+    },
+
+    paginatedTickers() {
+      if (this.paginatedTickers.length === 0 && this.page > 1) {
+        this.page -= 1
+      }
+    },
+
     filter() {
       this.page = 1
-      history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-      )
     },
-    page() {
+
+    pageStateOptions(value) {
       history.pushState(
         null,
         document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+        `${window.location.pathname}?filter=${value.filter}&page=${value.page}`
       )
     },
   },
