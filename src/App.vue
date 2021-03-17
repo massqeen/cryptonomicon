@@ -142,7 +142,7 @@
                 {{ t.name }} - USD
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ t.price }}
+                {{ formatPrice(t.price) }}
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
@@ -173,7 +173,7 @@
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-            v-for="(bar, i) in normalizedGraph"
+            v-for="(bar, i) in shortenedGraph"
             :key="i"
             :style="{ height: `${bar}%` }"
             class="bg-purple-800 border w-10"
@@ -223,6 +223,8 @@
 // [x] График сломан если везде одинаковые значения
 // [x] При удалении тикера остается выбор
 
+import { subscribeToTicker, unsubscribeFromTicker } from './api'
+
 export default {
   name: 'App',
 
@@ -233,15 +235,17 @@ export default {
       selectedTicker: null,
       tickers: [],
       graph: [],
+      shortenedGraph: [],
+      graphInterval: null,
       page: 1,
       perPage: 6,
-      intervals: [], //
       autoCompleteTags: [], //
       isLoading: false, //
     }
   },
 
   async created() {
+    this.isLoading = true
     const windowData = Object.fromEntries(
       new URL(window.location.toString()).searchParams.entries()
     )
@@ -256,7 +260,11 @@ export default {
     if (tickersData) {
       try {
         this.tickers = JSON.parse(tickersData)
-        this.tickers.forEach(ticker => this.subscribeToUpdates(ticker.name))
+        this.tickers.forEach(ticker =>
+          subscribeToTicker(ticker.name, newPrice =>
+            this.updateTicker(ticker.name, newPrice)
+          )
+        )
       } catch {
         localStorage.removeItem(tickersData)
       }
@@ -264,6 +272,8 @@ export default {
 
     const res = await this.getCoins()
     this.coinList = Object.values(res)
+    setInterval(this.updateTicker, 5000)
+    this.isLoading = false
   },
 
   computed: {
@@ -335,6 +345,22 @@ export default {
   },
 
   methods: {
+    runIntervalForGraphData() {
+      this.graphInterval = setInterval(this.shortenGraph, 1000)
+    },
+
+    shortenGraph() {
+      if (this.shortenedGraph.length < 30) {
+        // TODO replace magic 50 with const - height of bar if no data provided
+        this.shortenedGraph.push(this.normalizedGraph.slice(-1) || 50)
+        return
+      }
+      this.shortenedGraph = [
+        ...this.shortenedGraph,
+        this.normalizedGraph.slice(-1),
+      ].slice(-30)
+    },
+
     async getCoins() {
       try {
         const coins = await fetch(
@@ -348,44 +374,26 @@ export default {
       }
     },
 
-    async getTickerPrice(tickerName) {
-      try {
-        const ticker = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=fa0953473e497fca8bac965e71108df64934eeb22e2f15162856447d7faa3f4b`
-        )
-        const { USD } = await ticker.json()
-        return USD
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.log(e)
+    updateTicker(tickerName, price) {
+      this.tickers
+        .filter(t => t.name === tickerName)
+        .forEach(t => {
+          if (t === this.selectedTicker) {
+            this.graph.push(price)
+          }
+          t.price = price
+        })
+    },
+
+    formatPrice(price) {
+      if (price === '-') {
+        return price
       }
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2)
     },
 
     saveTickers() {
       localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers))
-    },
-
-    subscribeToUpdates(tickerName) {
-      const intervalId = setInterval(async () => {
-        const foundedTicker = this.tickers.find(t => t.name === tickerName)
-
-        if (!foundedTicker) {
-          return
-        }
-
-        const price = (await this.getTickerPrice(tickerName)) || 0
-
-        foundedTicker.price =
-          (await price) > 1
-            ? await price.toFixed(2)
-            : await price.toPrecision(2)
-
-        if (this.selectedTicker?.name === tickerName) {
-          this.graph.push(price)
-        }
-      }, 5000)
-
-      this.intervals.push({ name: tickerName, intervalId })
     },
 
     add() {
@@ -400,7 +408,9 @@ export default {
 
       this.tickers = [...this.tickers, currentTicker]
 
-      this.subscribeToUpdates(currentTicker.name)
+      subscribeToTicker(currentTicker.name, newPrice =>
+        this.updateTicker(currentTicker.name, newPrice)
+      )
 
       this.resetTickerInput()
       this.resetFilterInput()
@@ -451,18 +461,22 @@ export default {
     handleDelete(tickerToRemove) {
       if (tickerToRemove === this.selectedTicker) {
         this.selectedTicker = null
+        clearInterval(this.graphInterval)
       }
-      const intervalId = this.intervals.find(
-        t => t.name === tickerToRemove.name
-      )?.intervalId
-      clearInterval(intervalId)
+
       this.tickers = this.tickers.filter(t => t !== tickerToRemove)
+      unsubscribeFromTicker(tickerToRemove.name)
     },
   },
 
   watch: {
     selectedTicker() {
       this.graph = []
+      this.shortenedGraph = []
+      clearInterval(this.graphInterval)
+      if (this.selectedTicker) {
+        this.runIntervalForGraphData()
+      }
     },
 
     tickers() {
