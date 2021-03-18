@@ -218,7 +218,7 @@
 // [x] 8. При удалении тикера не изменяется localStorage | Критичность: 4
 // [x] 1. Одинаковый код в watch | Критичность: 3
 // [ ] 9. localStorage и анонимные вкладки | Критичность: 3
-// [ ] 11. Обновление вкладки со второй страницы приводит к ложному срабатыванию watcher и            page-1 |  Критичность: 3
+// [x] 11. Обновление вкладки со второй страницы приводит к ложному срабатыванию watcher и            page-1 |  Критичность: 3
 // [x] 7. График ужасно выглядит если будет много цен | Критичность: 2
 // [ ] 10. Магические строки и числа (URL, 5000 миллисекунд задержки, ключ локал стореджа, количество на странице) |  Критичность: 1
 // [x] 12. Пустые столбцы в графе при выборе первой валюты после обновления страницы |                Критичность: 1
@@ -227,7 +227,7 @@
 // [x] График сломан если везде одинаковые значения
 // [x] При удалении тикера остается выбор
 
-import { subscribeToTicker, unsubscribeFromTicker } from './api'
+import { subscribeToTicker, unsubscribeFromTicker, getCoins } from './api'
 
 export default {
   name: 'App',
@@ -253,6 +253,7 @@ export default {
     const windowData = Object.fromEntries(
       new URL(window.location.toString()).searchParams.entries()
     )
+
     const VALID_KEYS = ['filter', 'page']
     VALID_KEYS.forEach(key => {
       if (windowData[key]) {
@@ -274,8 +275,7 @@ export default {
       }
     }
 
-    const res = await this.getCoins()
-    this.coinList = Object.values(res)
+    this.coinList = Object.values(getCoins())
     this.isLoading = false
   },
 
@@ -348,18 +348,18 @@ export default {
   },
 
   methods: {
-    async getCoins() {
-      try {
-        const coins = await fetch(
-          'https://min-api.cryptocompare.com/data/all/coinlist?summary=true'
-        )
-        const { Data } = await coins.json()
-        return Data
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.log(e)
-      }
-    },
+    // async getCoins() {
+    //   try {
+    //     const coins = await fetch(
+    //       'https://min-api.cryptocompare.com/data/all/coinlist?summary=true'
+    //     )
+    //     const { Data } = await coins.json()
+    //     return Data
+    //   } catch (e) {
+    //     // eslint-disable-next-line no-console
+    //     console.log(e)
+    //   }
+    // },
 
     updateTicker(tickerName, price) {
       const ticker = this.tickers.find(t => t.name === tickerName)
@@ -451,25 +451,25 @@ export default {
       this.tickers = this.tickers.filter(t => t !== tickerToRemove)
       unsubscribeFromTicker(tickerToRemove.name)
     },
-  },
 
-  runIntervalForGraphData() {
-    this.graphInterval = setInterval(this.shortenGraph, 3000)
-  },
+    runIntervalForGraphData() {
+      this.graphInterval = setInterval(this.shortenGraph, 3000)
+    },
 
-  shortenGraph() {
-    if (this.shortenedGraph.length < 30) {
-      // TODO replace magic 50 with const - height of bar if no data provided
-      const normalizedBars = this.normalizedGraph.slice(-1)
-      normalizedBars.length === 0
-        ? this.shortenedGraph.push(50)
-        : this.shortenedGraph.push(normalizedBars)
-      return
-    }
-    this.shortenedGraph = [
-      ...this.shortenedGraph,
-      this.normalizedGraph.slice(-1),
-    ].slice(-30)
+    shortenGraph() {
+      if (this.shortenedGraph.length < 30) {
+        // TODO replace magic 50 with const - height of bar if no data provided
+        const normalizedBars = this.normalizedGraph.slice(-1)
+        normalizedBars.length === 0
+          ? this.shortenedGraph.push(50)
+          : this.shortenedGraph.push(normalizedBars)
+        return
+      }
+      this.shortenedGraph = [
+        ...this.shortenedGraph,
+        this.normalizedGraph.slice(-1),
+      ].slice(-30)
+    },
   },
 
   watch: {
@@ -487,7 +487,11 @@ export default {
     },
 
     paginatedTickers() {
-      if (this.paginatedTickers.length === 0 && this.page > 1) {
+      if (
+        this.paginatedTickers.length === 0 &&
+        this.page > 1 &&
+        !this.isLoading
+      ) {
         this.page -= 1
       }
     },
