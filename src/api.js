@@ -1,11 +1,13 @@
+const BASE_URL = 'wss://streamer.cryptocompare.com/v2'
 const API_KEY =
   'fa0953473e497fca8bac965e71108df64934eeb22e2f15162856447d7faa3f4b'
 
-const tickersHandlers = new Map(null)
-const socket = new WebSocket(
-  `wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`
-)
+const params = new URLSearchParams()
+params.append('api_key', API_KEY)
+const URL = `${BASE_URL}?${params.toString()}`
 
+const tickersHandlers = new Map(null)
+const socket = new WebSocket(URL)
 const AGGREGATE_INDEX = '5'
 
 socket.addEventListener('message', e => {

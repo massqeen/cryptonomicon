@@ -35,7 +35,7 @@
             >
             <div class="mt-1 relative rounded-md shadow-md">
               <input
-                v-model="ticker"
+                v-model.trim="ticker"
                 @keydown.enter="add"
                 @input="handleInputChange"
                 type="text"
@@ -124,7 +124,7 @@
           </button>
           <label>
             Фильтр:
-            <input type="text" v-model="filter" @input="page = 1" />
+            <input type="text" v-model.trim="filter" @input="page = 1" />
           </label>
         </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
