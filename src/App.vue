@@ -209,15 +209,19 @@
 
 <script>
 // [x] 6. Наличие в состоянии ЗАВИСИМЫХ ДАННЫХ | Критичность: 5+
-// [ ] 4. Запросы напрямую внутри компонента (???) | Критичность: 5
-// [ ] 2. При удалении остается подписка на загрузку тикера | Критичность: 5
+// [x] 4. Запросы напрямую внутри компонента (???) | Критичность: 5
+// [x] 2. При удалении остается подписка на загрузку тикера | Критичность: 5
+// [ ] 13. Баг повторного выбора той же валюты - обновление приложения и ошибка slice of              undefined | Критичность: 5
+// [ ] 14. Обрабатывать info We have not included any of the trading exchanges for DBTC and           we are not currently calculating an index for it. - не для всех валют приходят             данные из ws, получить однократно через REST | Критичность: 5
 // [ ] 5. Обработка ошибок API | Критичность: 5
-// [ ] 3. Количество запросов | Критичность: 4
+// [x] 3. Количество запросов | Критичность: 4
 // [x] 8. При удалении тикера не изменяется localStorage | Критичность: 4
 // [x] 1. Одинаковый код в watch | Критичность: 3
 // [ ] 9. localStorage и анонимные вкладки | Критичность: 3
-// [ ] 7. График ужасно выглядит если будет много цен | Критичность: 2
+// [ ] 11. Обновление вкладки со второй страницы приводит к ложному срабатыванию watcher и            page-1 |  Критичность: 3
+// [x] 7. График ужасно выглядит если будет много цен | Критичность: 2
 // [ ] 10. Магические строки и числа (URL, 5000 миллисекунд задержки, ключ локал стореджа, количество на странице) |  Критичность: 1
+// [x] 12. Пустые столбцы в графе при выборе первой валюты после обновления страницы |                Критичность: 1
 
 // Параллельно
 // [x] График сломан если везде одинаковые значения
@@ -272,7 +276,6 @@ export default {
 
     const res = await this.getCoins()
     this.coinList = Object.values(res)
-    setInterval(this.updateTicker, 5000)
     this.isLoading = false
   },
 
@@ -345,22 +348,6 @@ export default {
   },
 
   methods: {
-    runIntervalForGraphData() {
-      this.graphInterval = setInterval(this.shortenGraph, 1000)
-    },
-
-    shortenGraph() {
-      if (this.shortenedGraph.length < 30) {
-        // TODO replace magic 50 with const - height of bar if no data provided
-        this.shortenedGraph.push(this.normalizedGraph.slice(-1) || 50)
-        return
-      }
-      this.shortenedGraph = [
-        ...this.shortenedGraph,
-        this.normalizedGraph.slice(-1),
-      ].slice(-30)
-    },
-
     async getCoins() {
       try {
         const coins = await fetch(
@@ -375,14 +362,11 @@ export default {
     },
 
     updateTicker(tickerName, price) {
-      this.tickers
-        .filter(t => t.name === tickerName)
-        .forEach(t => {
-          if (t === this.selectedTicker) {
-            this.graph.push(price)
-          }
-          t.price = price
-        })
+      const ticker = this.tickers.find(t => t.name === tickerName)
+      if (ticker === this.selectedTicker) {
+        this.graph.push(price)
+      }
+      ticker.price = price
     },
 
     formatPrice(price) {
@@ -467,6 +451,25 @@ export default {
       this.tickers = this.tickers.filter(t => t !== tickerToRemove)
       unsubscribeFromTicker(tickerToRemove.name)
     },
+  },
+
+  runIntervalForGraphData() {
+    this.graphInterval = setInterval(this.shortenGraph, 3000)
+  },
+
+  shortenGraph() {
+    if (this.shortenedGraph.length < 30) {
+      // TODO replace magic 50 with const - height of bar if no data provided
+      const normalizedBars = this.normalizedGraph.slice(-1)
+      normalizedBars.length === 0
+        ? this.shortenedGraph.push(50)
+        : this.shortenedGraph.push(normalizedBars)
+      return
+    }
+    this.shortenedGraph = [
+      ...this.shortenedGraph,
+      this.normalizedGraph.slice(-1),
+    ].slice(-30)
   },
 
   watch: {
