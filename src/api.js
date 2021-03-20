@@ -8,22 +8,53 @@ wsParams.append('api_key', API_KEY)
 const WS_URL = `${WS_BASE_URL}?${wsParams.toString()}`
 
 const coinsParamsString = '?summary=true'
-const COINS_URL = new URL(`${BASE_URL}data/all/coinlist${coinsParamsString})`)
+const COINS_URL = new URL(`${BASE_URL}data/all/coinlist${coinsParamsString}`)
 
 const tickersHandlers = new Map(null)
 const socket = new WebSocket(WS_URL)
 const AGGREGATE_INDEX = '5'
+const AGGREGATE_INDEX_ERR = '500'
+
+let BTCtoUSD = 0
 
 socket.addEventListener('message', e => {
-  const { TYPE: type, FROMSYMBOL: currency, PRICE: newPrice } = JSON.parse(
-    e.data
-  )
+  const {
+    TYPE: type,
+    FROMSYMBOL: currencyFrom,
+    TOSYMBOL: currencyTo,
+    PRICE: newPrice,
+    MESSAGE: message,
+    PARAMETER: parameter,
+  } = JSON.parse(e.data)
+
+  if (!tickersHandlers.get('BTC')) {
+    subscribeToTicker('BTC', 'USD', price => (BTCtoUSD = price))
+  }
+
+  if (type === AGGREGATE_INDEX_ERR && message === 'INVALID_SUB') {
+    const convertTo = parameter.split('~')[3]
+    const convertFrom = parameter.split('~')[2]
+
+    if (convertTo === 'BTC') {
+      const handlers = tickersHandlers.get(convertFrom) ?? []
+      handlers.forEach(fn => {
+        fn('-', false)
+      })
+      return
+    }
+    unsubscribeFromTickerOnWs(convertFrom)
+    subscribeToTicker(convertFrom, 'BTC')
+  }
+
   if (type !== AGGREGATE_INDEX || newPrice === undefined) {
     return
   }
 
-  const handlers = tickersHandlers.get(currency) ?? []
-  handlers.forEach(fn => fn(newPrice))
+  const handlers = tickersHandlers.get(currencyFrom) ?? []
+  handlers.forEach(fn => {
+    const priceToUSD = currencyTo === 'USD' ? newPrice : newPrice * BTCtoUSD
+    fn(priceToUSD)
+  })
 })
 
 const sendToWebSocket = message => {
@@ -43,10 +74,10 @@ const sendToWebSocket = message => {
   )
 }
 
-const subscribeToTickerOnWs = ticker => {
+const subscribeToTickerOnWs = (ticker, currency) => {
   sendToWebSocket({
     action: 'SubAdd',
-    subs: [`5~CCCAGG~${ticker}~USD`],
+    subs: [`5~CCCAGG~${ticker}~${currency}`],
   })
 }
 
@@ -54,6 +85,10 @@ function unsubscribeFromTickerOnWs(ticker) {
   sendToWebSocket({
     action: 'SubRemove',
     subs: [`5~CCCAGG~${ticker}~USD`],
+  })
+  sendToWebSocket({
+    action: 'SubRemove',
+    subs: [`5~CCCAGG~${ticker}~BTC`],
   })
 }
 
@@ -68,10 +103,14 @@ export const getCoins = async () => {
   }
 }
 
-export const subscribeToTicker = (ticker, cb) => {
+export const subscribeToTicker = (ticker, currency, cb) => {
   const subscribers = tickersHandlers.get(ticker) || []
-  tickersHandlers.set(ticker, [...subscribers, cb])
-  subscribeToTickerOnWs(ticker)
+  if (cb) {
+    tickersHandlers.set(ticker, [...subscribers, cb])
+  } else {
+    tickersHandlers.set(ticker, [...subscribers])
+  }
+  subscribeToTickerOnWs(ticker, currency)
 }
 
 export const unsubscribeFromTicker = ticker => {

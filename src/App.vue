@@ -132,10 +132,12 @@
             v-for="t in paginatedTickers"
             :key="t.name"
             @click="select(t)"
+            class="overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
             :class="{
               'border-4': selectedTicker === t,
+              'bg-red-100': !isCoinExist(t.name),
+              'bg-white': isCoinExist(t.name),
             }"
-            class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
             <div class="px-4 py-5 sm:p-6 text-center">
               <dt class="text-sm font-medium text-gray-500 truncate">
@@ -148,7 +150,7 @@
             <div class="w-full border-t border-gray-200"></div>
             <button
               @click.stop="handleDelete(t)"
-              class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none"
+              class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 transition-all focus:outline-none"
             >
               <svg
                 class="h-5 w-5"
@@ -211,8 +213,6 @@
 // [x] 6. Наличие в состоянии ЗАВИСИМЫХ ДАННЫХ | Критичность: 5+
 // [x] 4. Запросы напрямую внутри компонента (???) | Критичность: 5
 // [x] 2. При удалении остается подписка на загрузку тикера | Критичность: 5
-// [ ] 13. Баг повторного выбора той же валюты - обновление приложения и ошибка slice of              undefined | Критичность: 5
-// [ ] 14. Обрабатывать info We have not included any of the trading exchanges for DBTC and           we are not currently calculating an index for it. - не для всех валют приходят             данные из ws, получить однократно через REST | Критичность: 5
 // [ ] 5. Обработка ошибок API | Критичность: 5
 // [x] 3. Количество запросов | Критичность: 4
 // [x] 8. При удалении тикера не изменяется localStorage | Критичность: 4
@@ -228,6 +228,8 @@
 // [x] При удалении тикера остается выбор
 
 import { subscribeToTicker, unsubscribeFromTicker, getCoins } from './api'
+
+const CURRENCY = 'USD'
 
 export default {
   name: 'App',
@@ -245,6 +247,7 @@ export default {
       perPage: 6,
       autoCompleteTags: [], //
       isLoading: false, //
+      nonExistingCoins: [],
     }
   },
 
@@ -266,8 +269,15 @@ export default {
       try {
         this.tickers = JSON.parse(tickersData)
         this.tickers.forEach(ticker =>
-          subscribeToTicker(ticker.name, newPrice =>
-            this.updateTicker(ticker.name, newPrice)
+          subscribeToTicker(
+            ticker.name,
+            CURRENCY,
+            (newPrice, isCoinExist = true) => {
+              this.updateTicker(ticker.name, newPrice)
+              if (!isCoinExist) {
+                this.nonExistingCoins.push(ticker.name)
+              }
+            }
           )
         )
       } catch {
@@ -275,7 +285,7 @@ export default {
       }
     }
 
-    this.coinList = Object.values(getCoins())
+    this.coinList = Object.values(await getCoins())
     this.isLoading = false
   },
 
@@ -348,19 +358,6 @@ export default {
   },
 
   methods: {
-    // async getCoins() {
-    //   try {
-    //     const coins = await fetch(
-    //       'https://min-api.cryptocompare.com/data/all/coinlist?summary=true'
-    //     )
-    //     const { Data } = await coins.json()
-    //     return Data
-    //   } catch (e) {
-    //     // eslint-disable-next-line no-console
-    //     console.log(e)
-    //   }
-    // },
-
     updateTicker(tickerName, price) {
       const ticker = this.tickers.find(t => t.name === tickerName)
       if (ticker === this.selectedTicker) {
@@ -392,8 +389,15 @@ export default {
 
       this.tickers = [...this.tickers, currentTicker]
 
-      subscribeToTicker(currentTicker.name, newPrice =>
-        this.updateTicker(currentTicker.name, newPrice)
+      subscribeToTicker(
+        currentTicker.name,
+        CURRENCY,
+        (newPrice, isCoinExist = true) => {
+          this.updateTicker(currentTicker.name, newPrice)
+          if (!isCoinExist) {
+            this.nonExistingCoins.push(currentTicker.name)
+          }
+        }
       )
 
       this.resetTickerInput()
@@ -440,6 +444,10 @@ export default {
 
     select(ticker) {
       this.selectedTicker = ticker
+    },
+
+    isCoinExist(name) {
+      return !this.nonExistingCoins.some(coin => coin === name)
     },
 
     handleDelete(tickerToRemove) {
