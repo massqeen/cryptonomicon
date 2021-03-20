@@ -27,10 +27,6 @@ socket.addEventListener('message', e => {
     PARAMETER: parameter,
   } = JSON.parse(e.data)
 
-  if (!tickersHandlers.get('BTC')) {
-    subscribeToTicker('BTC', 'USD', price => (BTCtoUSD = price))
-  }
-
   if (type === AGGREGATE_INDEX_ERR && message === 'INVALID_SUB') {
     const convertTo = parameter.split('~')[3]
     const convertFrom = parameter.split('~')[2]
@@ -117,3 +113,5 @@ export const unsubscribeFromTicker = ticker => {
   tickersHandlers.delete(ticker)
   unsubscribeFromTickerOnWs(ticker)
 }
+
+subscribeToTicker('BTC', 'USD', price => (BTCtoUSD = price))

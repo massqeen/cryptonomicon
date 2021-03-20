@@ -285,8 +285,8 @@ export default {
       }
     }
 
-    this.coinList = Object.values(await getCoins())
     this.isLoading = false
+    this.coinList = Object.values(await getCoins())
   },
 
   computed: {
